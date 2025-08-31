@@ -52,7 +52,7 @@ python release_db_builder.py config.json --token YOUR_GITHUB_TOKEN
 python release_db_builder.py config.json --verbose
 ```
 
-## Configuration
+### Configuration
 
 Create a JSON configuration file with the following structure:
 
@@ -71,13 +71,13 @@ Create a JSON configuration file with the following structure:
 }
 ```
 
-### Configuration Fields
+#### Configuration Fields
 
 - **game_name**: Used for the output directory and filenames
 - **git_repo**: GitHub repository in "owner/repo" format
 - **filters**: Array of regex patterns to filter relevant version tags
 
-### Example Filter Patterns
+#### Example Filter Patterns
 
 - `^[0-9]+\\.[0-9]+$` - Matches tags like "1.0", "2.5"
 - `^[0-9]+\\.[0-9]+\\.[0-9]+$` - Matches tags like "1.0.0", "2.5.3"
@@ -122,20 +122,18 @@ Each release database contains an array of simplified release objects with essen
 - **Sounds support**: Sounds, Unknown
 - All classifications are automatically inferred from filename patterns
 
-## GitHub API Rate Limiting
+## Usage for Client Applications
 
-- **Without token**: 60 requests per hour
-- **With token**: 5,000 requests per hour
+1. Fetch `index.json` to get current database versions
+2. Compare with local version cache to identify outdated databases
+3. Download only the `{game_name}_releases.json` files that have newer versions
+4. Update local version cache with new timestamps
 
-The application automatically handles rate limiting and will wait when limits are approached.
+**NOTE**: To get the files easily, you can use the urls https://github.com/SrGnis/cataclysm-db/releases/download/latest/{file_name}
 
-## Caching
+### Index File
 
-The cache files are automatically created and updated. When the application runs for the first time, it processes all matching tags, but on subsequent runs, it only processes new tags if any exist, which significantly reduces GitHub API usage and execution time.
-
-## Client Synchronization
-
-The `db/index.json` file enables efficient client synchronization by tracking database versions:
+The `db/index.json` file enables efficient client application synchronization by tracking database versions:
 
 ### Index Structure
 ```json
@@ -149,15 +147,9 @@ The `db/index.json` file enables efficient client synchronization by tracking da
 }
 ```
 
-### Synchronization Benefits
-- **Version tracking**: Each game database has a Unix timestamp version that updates only when releases change
-- **Efficient updates**: Clients can compare local versions with the server index to determine which databases need updating
+## Caching
 
-### Usage for Clients
-1. Fetch `db/index.json` to get current database versions
-2. Compare with local version cache to identify outdated databases
-3. Download only the `{game_name}_releases.json` files that have newer versions
-4. Update local version cache with new timestamps
+The cache files are automatically created and updated. When the application runs for the first time, it processes all matching tags, but on subsequent runs, it only processes new tags if any exist, which significantly reduces GitHub API usage and execution time.
 
 ## Asset Reprocessing
 
@@ -185,22 +177,6 @@ To add more games, extend the `games` array in your configuration:
   ]
 }
 ```
-
-## Data Models
-
-The application uses data classes and enums in `release.py`:
-
-### Enums
-- **`AssetPlatform`**: Windows, Linux, macOS, Android, Unknown
-- **`AssetArch`**: x32, x64, ARM32, ARM64, Universal, Unknown
-- **`AssetGraphics`**: Tiles, ASCII, Unknown
-- **`AssetSounds`**: Sounds, Unknown
-- **`ReleaseChannel`**: Stable, Experimental
-
-### Classes
-- **`ReleaseAsset`**: Represents a downloadable file with platform/architecture/feature detection
-- **`GameRelease`**: Represents a game release with metadata and associated assets
-
 
 ## License
 
