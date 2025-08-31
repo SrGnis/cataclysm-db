@@ -26,12 +26,18 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          lfs: true
           
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
           
+      - name: Install Git LFS
+        run: |
+          git lfs install
+          git lfs pull
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -71,6 +77,7 @@ jobs:
         run: |
           git add .
           git commit -m "Automated database update - $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          git lfs push --all origin
           git push
           
       - name: Delete existing latest tag and release
