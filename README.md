@@ -1,6 +1,6 @@
-# GitHub Release Database Builder
+# Cataclysm Database
 
-A Python application that builds a database of GitHub releases for specified repositories, with configurable filtering to capture only relevant version tags.
+A Python application that builds a database of GitHub releases for specified repositories.
 
 ## Features
 
@@ -12,7 +12,8 @@ A Python application that builds a database of GitHub releases for specified rep
 ## Requirements
 
 - Python 3.6+
-- Git (must be available in PATH)
+- Git
+- Git LFS (Large File Storage)
 - Internet connection
 - Optional: GitHub personal access token for higher rate limits
 
@@ -20,7 +21,7 @@ A Python application that builds a database of GitHub releases for specified rep
 
 1. Clone this repository:
 ```bash
-git clone <repository-url>
+git clone https://github.com/SrGnis/cataclysm-db
 cd cataclysm-db
 ```
 
@@ -90,14 +91,16 @@ The application creates an organized directory structure for each game:
 ```
 db/
 └── {game_name}/
-    ├── {game_name}_releases.json     # Release database
-    └── {game_name}_processed_tags.json  # Cache of processed tags
+    ├── {game_name}_releases.json        # Release database
+    ├── {game_name}_processed_tags.json  # Cache of successfully processed tags
+    └── {game_name}_failed_tags.json     # Cache of tags without releases
 ```
 
-### Files Generated
+### Files Generated:
 
-- **`{game_name}_releases.json`**: Contains an array of release objects with complete GitHub API data
-- **`{game_name}_processed_tags.json`**: Cache file tracking which tags have been processed to avoid duplicate work
+- **`{game_name}_releases.json`**: Contains an array of simplified release objects with essential GitHub API data
+- **`{game_name}_processed_tags.json`**: Cache file tracking which tags have been successfully processed to avoid duplicate work
+- **`{game_name}_failed_tags.json`**: Cache file tracking tags that don't have associated GitHub releases to avoid repeated failed API calls
 
 Each release database contains an array of simplified release objects with essential information:
 
@@ -110,11 +113,12 @@ Each release database contains an array of simplified release objects with essen
 
 **Asset Information:**
 - Asset name and download URL
-- File size and platform detection (Windows, Linux, macOS, Android)
-- Graphics and sounds detection based on filename patterns
-- Creation and update timestamps
-
-The data structure is optimized to include only relevant information, significantly reducing storage size compared to the full GitHub API response.
+- File size and creation/update timestamps
+- **Platform detection**: Windows, Linux, macOS, Android, Unknown
+- **Architecture detection**: x32, x64, ARM32, ARM64, Universal, Unknown
+- **Graphics type**: Tiles, ASCII, Unknown
+- **Sounds support**: Sounds, Unknown
+- All classifications are automatically inferred from filename patterns
 
 ## GitHub API Rate Limiting
 
@@ -123,24 +127,17 @@ The data structure is optimized to include only relevant information, significan
 
 The application automatically handles rate limiting and will wait when limits are approached.
 
-## Caching and Efficiency
-
-The application employs a caching system to prevent duplicate work. 
-
-It maintains a processed tags cache that tracks which tags have already been processed to avoid duplicate API calls, implements incremental updates to only process new tags, and uses persistent storage so the cache survives between runs, making subsequent executions much faster. 
+## Caching
 
 The cache files are automatically created and updated. When the application runs for the first time, it processes all matching tags, but on subsequent runs, it only processes new tags if any exist, which significantly reduces GitHub API usage and execution time.
 
-## Examples
+## Asset Reprocessing
 
-### Cataclysm: Dark Days Ahead
+The `reprocess_assets.py` script provides functionality to update existing release databases with improved asset classification. It automatically scans all game databases in the `db/` directory and applies the latest detection logic for platforms, architectures, graphics, and sounds.
 
-The included `config.json` is configured for Cataclysm: Dark Days Ahead with filters that capture:
-- Major.minor versions (e.g., "0.F")
-- Semantic versions (e.g., "0.F.1")
-- Pre-release versions (e.g., "0.F-alpha")
+This tool is particularly useful when you've updated the asset classification logic in `release.py` or want to standardize asset metadata across all collected releases. Simply run `python reprocess_assets.py` to update all existing databases with the latest classification algorithms.
 
-### Adding More Games
+## Adding More Games
 
 To add more games, extend the `games` array in your configuration:
 
@@ -161,6 +158,22 @@ To add more games, extend the `games` array in your configuration:
 }
 ```
 
+## Data Models
+
+The application uses data classes and enums in `release.py`:
+
+### Enums
+- **`AssetPlatform`**: Windows, Linux, macOS, Android, Unknown
+- **`AssetArch`**: x32, x64, ARM32, ARM64, Universal, Unknown
+- **`AssetGraphics`**: Tiles, ASCII, Unknown
+- **`AssetSounds`**: Sounds, Unknown
+- **`ReleaseChannel`**: Stable, Experimental
+
+### Classes
+- **`ReleaseAsset`**: Represents a downloadable file with platform/architecture/feature detection
+- **`GameRelease`**: Represents a game release with metadata and associated assets
+
+
 ## License
 
-This project is open source. Please check the repository for license details.
+This project is licensed under the MIT License. See the LICENSE file in the repository for details.
