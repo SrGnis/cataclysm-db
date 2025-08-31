@@ -11,7 +11,7 @@ import re
 import subprocess
 import time
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 import argparse
 import logging
 import requests
@@ -154,6 +154,10 @@ class ReleaseDBBuilder:
         """Get the file path for a game's failed tags cache."""
         return self._get_game_directory(game_name) / f"{game_name}_failed_tags.json"
 
+    def _get_database_index_file_path(self) -> Path:
+        """Get the file path for the database index."""
+        return Path("db") / "index.json"
+
     def _ensure_game_directory(self, game_name: str) -> None:
         game_dir = self._get_game_directory(game_name)
         game_dir.mkdir(parents=True, exist_ok=True)
@@ -208,6 +212,33 @@ class ReleaseDBBuilder:
         except IOError as e:
             logging.error(f"Failed to save failed tags cache for {game_name}: {e}")
 
+    def _load_database_index(self) -> Dict[str, Dict[str, int]]:
+        """Load the database index from file."""
+        index_file = self._get_database_index_file_path()
+
+        if index_file.exists():
+            try:
+                with open(index_file, 'r') as f:
+                    return json.load(f)
+            except (json.JSONDecodeError, IOError) as e:
+                logging.warning(f"Failed to load database index: {e}")
+
+        return {}
+
+    def _save_database_index(self, index: Dict[str, Dict[str, int]]) -> None:
+        """Save the database index to file."""
+        index_file = self._get_database_index_file_path()
+
+        # Ensure the db directory exists
+        index_file.parent.mkdir(parents=True, exist_ok=True)
+
+        try:
+            with open(index_file, 'w') as f:
+                json.dump(index, f, indent=2, sort_keys=True)
+            logging.debug(f"Updated database index with {len(index)} games")
+        except IOError as e:
+            logging.error(f"Failed to save database index: {e}")
+
     def _load_existing_releases(self, game_name: str) -> List[GameRelease]:
         """Load existing releases data from file."""
         releases_file = self._get_releases_file_path(game_name)
@@ -227,20 +258,49 @@ class ReleaseDBBuilder:
         return []
 
     def _save_releases(self, game_name: str, releases: List[GameRelease]) -> None:
-        """Save releases data to file."""
+        """Save releases data to file and update database index."""
         self._ensure_game_directory(game_name)
         releases_file = self._get_releases_file_path(game_name)
 
         try:
+            # Sort releases by published_at date (newest first), fallback to created_at, then to epoch for None values
+            def get_sort_date(release):
+                from datetime import datetime
+                return release.published_at or release.created_at or datetime.fromtimestamp(0)
+
+            sorted_releases = sorted(releases, key=get_sort_date, reverse=True)
+
             # Convert GameRelease objects to dictionaries for JSON serialization
-            releases_data = [release.to_dict() for release in releases]
+            releases_data = [release.to_dict() for release in sorted_releases]
             with open(releases_file, 'w') as f:
                 json.dump(releases_data, f, indent=2)
-            logging.info(f"Saved {len(releases)} releases to {releases_file}")
+            logging.info(f"Saved {len(releases)} releases to {releases_file} (sorted by date)")
+
+            # Update database index with current timestamp
+            self._update_database_index(game_name)
+
         except IOError as e:
             logging.error(f"Failed to save releases for {game_name}: {e}")
+
+    def _update_database_index(self, game_name: str) -> None:
+        """Update the database index with current timestamp for the specified game."""
+        try:
+            # Load current index
+            index = self._load_database_index()
+
+            # Update timestamp for this game (Unix timestamp in seconds)
+            current_timestamp = int(time.time())
+            index[game_name] = {"version": current_timestamp}
+
+            # Save updated index
+            self._save_database_index(index)
+
+            logging.debug(f"Updated database index for {game_name} with version {current_timestamp}")
+
+        except Exception as e:
+            logging.error(f"Failed to update database index for {game_name}: {e}")
     
-    def build_database(self, game_config: Dict) -> List[GameRelease]:
+    def build_database(self, game_config: Dict) -> Tuple[List[GameRelease], bool]:
         """Build release database for a single game."""
         game_name = game_config['game_name']
         git_repo = game_config['git_repo']
@@ -271,9 +331,11 @@ class ReleaseDBBuilder:
 
         # Load existing releases data if it exists
         releases = self._load_existing_releases(game_name)
-        logging.info(f"Loaded {len(releases)} existing releases from database")
+        initial_release_count = len(releases)
+        logging.info(f"Loaded {initial_release_count} existing releases from database")
 
         # Get release data for each new filtered tag
+        new_releases_added = 0
         for i, tag in enumerate(new_tags, 1):
             logging.info(f"Processing new tag {i}/{len(new_tags)}: {tag}")
 
@@ -281,6 +343,7 @@ class ReleaseDBBuilder:
             if release_data:
                 releases.append(release_data)
                 processed_tags.append(tag)
+                new_releases_added += 1
                 logging.debug(f"Successfully processed tag: {tag}")
             else:
                 failed_tags.append(tag)
@@ -294,17 +357,31 @@ class ReleaseDBBuilder:
             self._save_processed_tags(game_name, processed_tags)
             self._save_failed_tags(game_name, failed_tags)
 
+        # Determine if releases changed (new releases were added)
+        releases_changed = new_releases_added > 0
+
         logging.info(f"Successfully retrieved {len(releases)} total releases for {game_name}")
-        return releases
+        if releases_changed:
+            logging.info(f"Added {new_releases_added} new releases")
+        else:
+            logging.info("No new releases found")
+
+        return releases, releases_changed
     
     def run(self) -> None:
         """Run the database builder for all configured games."""
         for game_config in self.config['games']:
             try:
-                releases = self.build_database(game_config)
+                releases, releases_changed = self.build_database(game_config)
 
                 game_name = game_config['game_name']
-                self._save_releases(game_name, releases)
+
+                # Only save releases and update index if there were changes
+                if releases_changed:
+                    self._save_releases(game_name, releases)
+                    logging.info(f"Database updated for {game_name}")
+                else:
+                    logging.info(f"No changes for {game_name}, skipping save and index update")
 
             except Exception as e:
                 logging.error(f"Failed to build database for {game_config['game_name']}: {e}")

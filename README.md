@@ -90,6 +90,7 @@ The application creates an organized directory structure for each game:
 
 ```
 db/
+├── index.json                           # Database version index for client synchronization
 └── {game_name}/
     ├── {game_name}_releases.json        # Release database
     ├── {game_name}_processed_tags.json  # Cache of successfully processed tags
@@ -98,6 +99,7 @@ db/
 
 ### Files Generated:
 
+- **`index.json`**: Central index file tracking database versions (Unix timestamps) for efficient client synchronization
 - **`{game_name}_releases.json`**: Contains an array of simplified release objects with essential GitHub API data
 - **`{game_name}_processed_tags.json`**: Cache file tracking which tags have been successfully processed to avoid duplicate work
 - **`{game_name}_failed_tags.json`**: Cache file tracking tags that don't have associated GitHub releases to avoid repeated failed API calls
@@ -130,6 +132,32 @@ The application automatically handles rate limiting and will wait when limits ar
 ## Caching
 
 The cache files are automatically created and updated. When the application runs for the first time, it processes all matching tags, but on subsequent runs, it only processes new tags if any exist, which significantly reduces GitHub API usage and execution time.
+
+## Client Synchronization
+
+The `db/index.json` file enables efficient client synchronization by tracking database versions:
+
+### Index Structure
+```json
+{
+  "dda": {
+    "version": 1756653636
+  },
+  "bn": {
+    "version": 1756653637
+  }
+}
+```
+
+### Synchronization Benefits
+- **Version tracking**: Each game database has a Unix timestamp version that updates only when releases change
+- **Efficient updates**: Clients can compare local versions with the server index to determine which databases need updating
+
+### Usage for Clients
+1. Fetch `db/index.json` to get current database versions
+2. Compare with local version cache to identify outdated databases
+3. Download only the `{game_name}_releases.json` files that have newer versions
+4. Update local version cache with new timestamps
 
 ## Asset Reprocessing
 

@@ -1,0 +1,125 @@
+name: Release Database Update
+
+on:
+  # Run daily at midnight UTC
+  schedule:
+    - cron: '0 0 * * *'
+
+  # Allow manual triggering
+  workflow_dispatch:
+    inputs:
+      force_release:
+        description: 'Force release creation even if no database changes'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  update-database:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write
+      
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          
+      - name: Run release database builder
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python release_db_builder.py config.json --token "$GITHUB_TOKEN"
+          
+      - name: Check for changes
+        id: check_changes
+        run: |
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "No changes detected"
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          else
+            echo "Changes detected"
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          fi
+          
+      - name: Exit if no changes and not forced
+        if: steps.check_changes.outputs.has_changes == 'false' && inputs.force_release != true
+        run: |
+          echo "No changes to commit and force_release is not enabled. Exiting workflow."
+          exit 0
+          
+      - name: Configure git
+        if: steps.check_changes.outputs.has_changes == 'true'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+
+      - name: Commit changes
+        if: steps.check_changes.outputs.has_changes == 'true'
+        run: |
+          git add .
+          git commit -m "Automated database update - $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          git push
+          
+      - name: Delete existing latest tag and release
+        if: steps.check_changes.outputs.has_changes == 'true' || inputs.force_release == true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Delete the release first (if it exists)
+          if gh release view latest >/dev/null 2>&1; then
+            echo "Deleting existing 'latest' release..."
+            gh release delete latest --yes
+          else
+            echo "No existing 'latest' release found"
+          fi
+
+          # Delete the tag (if it exists)
+          if git tag -l | grep -q "^latest$"; then
+            echo "Deleting existing 'latest' tag..."
+            git tag -d latest
+            git push origin :refs/tags/latest
+          else
+            echo "No existing 'latest' tag found"
+          fi
+
+      - name: Create new latest tag
+        if: steps.check_changes.outputs.has_changes == 'true' || inputs.force_release == true
+        run: |
+          git tag latest
+          git push origin latest
+
+      - name: Create GitHub release with assets
+        if: steps.check_changes.outputs.has_changes == 'true' || inputs.force_release == true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Create the release
+          gh release create latest \
+            --title "Latest Release Database" \
+            --notes "Automated release containing the latest game release databases.
+
+          **Files included:**
+          - \`index.json\` - Main database index
+          - \`*_releases.json\` - Individual game release databases
+
+          **Last updated:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" \
+            --latest
+          
+          # Upload index.json
+          gh release upload latest db/index.json
+          
+          # Upload all game release files
+          find db -name "*_releases.json" -exec gh release upload latest {} \;
