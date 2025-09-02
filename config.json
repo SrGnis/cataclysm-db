@@ -3,15 +3,7 @@
     {
       "game_name": "dda",
       "git_repo": "CleverRaven/Cataclysm-DDA",
-      "filters": [
-        "^0\\.[0-9]+$",
-        "^0\\.[0-9]+\\.[0-9]+$",
-        "^0\\.[A-Z]$",
-        "^0\\.[A-Z]-[0-9]+$",
-        "^cdda-0\\.[A-Z]-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{4}$",
-        "^cdda-experimental-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{4}$",
-        "^experimental-[0-9]+$"
-      ]
+      "filters": [ "^0\\.([0-9]+|[A-Z]).*", "^cdda-0\\.([0-9]+|[A-Z]).*", "^cdda-experimental-.*", "^experimental-.*" ]
     },
     { "game_name": "bn", "git_repo": "cataclysmbnteam/Cataclysm-BN", "filters": [ ".*" ] },
     { "game_name": "tlg", "git_repo": "Cataclysm-TLG/Cataclysm-TLG", "filters": [ ".*" ] }
