@@ -52,6 +52,26 @@ python release_db_builder.py config.json --token YOUR_GITHUB_TOKEN
 python release_db_builder.py config.json --verbose
 ```
 
+### Fresh Rebuild
+
+To force a complete rebuild of specific games from scratch (ignoring all cached data):
+
+```bash
+python release_db_builder.py config.json --fresh game1,game2,game3
+```
+
+This will:
+- Skip loading processed tags cache for the specified games
+- Skip loading failed tags cache for the specified games
+- Skip loading existing releases data for the specified games
+- Force a complete rebuild from all available tags
+
+You can combine this with other options:
+
+```bash
+python release_db_builder.py config.json --token YOUR_TOKEN --fresh dda --verbose
+```
+
 ### Configuration
 
 Create a JSON configuration file with the following structure:
@@ -156,6 +176,31 @@ The cache files are automatically created and updated. When the application runs
 The `reprocess_assets.py` script provides functionality to update existing release databases with improved asset classification. It automatically scans all game databases in the `db/` directory and applies the latest detection logic for platforms, architectures, graphics, and sounds.
 
 This tool is particularly useful when you've updated the asset classification logic in `release.py` or want to standardize asset metadata across all collected releases. Simply run `python reprocess_assets.py` to update all existing databases with the latest classification algorithms.
+
+## GitHub Actions Automation
+
+This repository includes a GitHub Actions workflow that automatically updates the database and creates releases. The workflow:
+
+- **Runs automatically** every Sunday at midnight UTC
+- **Can be triggered manually** with custom parameters
+- **Detects changes** and only creates releases when the database is updated
+- **Manages releases** by replacing the "latest" tag and release with updated data
+
+### Manual Workflow Triggers
+
+You can manually trigger the workflow from the GitHub Actions tab with these options:
+
+1. **Force Release**: Create a release even if no database changes were detected
+2. **Extra Parameters**: Pass additional command-line arguments to the build script
+
+#### Examples of Extra Parameters:
+
+- `--verbose` - Enable verbose logging
+- `--fresh dda` - Force fresh rebuild of the "dda" game database
+- `--fresh game1,game2` - Force fresh rebuild of multiple games
+- `--verbose --fresh dda` - Combine multiple parameters
+
+The workflow will automatically include information about any extra parameters used in the commit message and release notes.
 
 ## Adding More Games
 

@@ -13,6 +13,11 @@ on:
         required: false
         default: false
         type: boolean
+      extra_params:
+        description: 'Extra parameters for the build script (e.g., "--fresh game1,game2" or "--verbose")'
+        required: false
+        default: ''
+        type: string
 
 jobs:
   update-database:
@@ -47,7 +52,18 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          python release_db_builder.py config.json --token "$GITHUB_TOKEN"
+          # Build the command with base parameters
+          cmd="python release_db_builder.py config.json --token \"$GITHUB_TOKEN\""
+
+          # Add extra parameters if provided
+          if [ -n "${{ inputs.extra_params }}" ]; then
+            echo "Adding extra parameters: ${{ inputs.extra_params }}"
+            cmd="$cmd ${{ inputs.extra_params }}"
+          fi
+
+          # Execute the command
+          echo "Running: $cmd"
+          eval "$cmd"
           
       - name: Check for changes
         id: check_changes
@@ -76,7 +92,14 @@ jobs:
         if: steps.check_changes.outputs.has_changes == 'true'
         run: |
           git add .
-          git commit -m "Automated database update - $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+
+          # Create commit message with extra params info if provided
+          commit_msg="Automated database update - $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          if [ -n "${{ inputs.extra_params }}" ]; then
+            commit_msg="$commit_msg (with extra params: ${{ inputs.extra_params }})"
+          fi
+
+          git commit -m "$commit_msg"
           git lfs push --all origin
           git push
           
@@ -113,16 +136,26 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Create the release
-          gh release create latest \
-            --title "Latest Release Database" \
-            --notes "Automated release containing the latest game release databases.
+          # Build release notes
+          release_notes="Automated release containing the latest game release databases.
 
           **Files included:**
           - \`index.json\` - Main database index
           - \`*_releases.json\` - Individual game release databases
 
-          **Last updated:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" \
+          **Last updated:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+
+          # Add extra params info if provided
+          if [ -n "${{ inputs.extra_params }}" ]; then
+            release_notes="$release_notes
+
+          **Build parameters:** ${{ inputs.extra_params }}"
+          fi
+
+          # Create the release
+          gh release create latest \
+            --title "Latest Release Database" \
+            --notes "$release_notes" \
             --latest
           
           # Upload index.json

@@ -71,10 +71,11 @@ class GitHubAPIClient:
 class ReleaseDBBuilder:
     """Main application class for building release databases."""
     
-    def __init__(self, config_path: str, github_token: Optional[str] = None):
+    def __init__(self, config_path: str, github_token: Optional[str] = None, fresh_games: Optional[List[str]] = None):
         self.config_path = Path(config_path)
         self.github_client = GitHubAPIClient(github_token)
         self.config = self._load_config()
+        self.fresh_games = set(fresh_games) if fresh_games else set()
         
     def _load_config(self) -> Dict:
         """Load and validate configuration file."""
@@ -308,13 +309,24 @@ class ReleaseDBBuilder:
 
         logging.info(f"Building database for {game_name}")
 
-        # Load processed tags cache
-        processed_tags = self._load_processed_tags(game_name)
-        logging.info(f"Loaded {len(processed_tags)} previously processed tags from cache")
+        # Check if this game should be rebuilt fresh
+        is_fresh_rebuild = game_name in self.fresh_games
+        if is_fresh_rebuild:
+            logging.info(f"Fresh rebuild requested for {game_name} - skipping all cached data")
 
-        # Load failed tags cache
-        failed_tags = self._load_failed_tags(game_name)
-        logging.info(f"Loaded {len(failed_tags)} previously failed tags from cache")
+        # Load processed tags cache (skip if fresh rebuild)
+        processed_tags = [] if is_fresh_rebuild else self._load_processed_tags(game_name)
+        if is_fresh_rebuild:
+            logging.info("Skipping processed tags cache for fresh rebuild")
+        else:
+            logging.info(f"Loaded {len(processed_tags)} previously processed tags from cache")
+
+        # Load failed tags cache (skip if fresh rebuild)
+        failed_tags = [] if is_fresh_rebuild else self._load_failed_tags(game_name)
+        if is_fresh_rebuild:
+            logging.info("Skipping failed tags cache for fresh rebuild")
+        else:
+            logging.info(f"Loaded {len(failed_tags)} previously failed tags from cache")
 
         # Get all tags from repository
         logging.info(f"Fetching tags from {git_repo}")
@@ -329,10 +341,13 @@ class ReleaseDBBuilder:
         new_tags = [tag for tag in filtered_tags if tag not in processed_tags and tag not in failed_tags]
         logging.info(f"Found {len(new_tags)} new tags to process (excluding {len(failed_tags)} previously failed tags)")
 
-        # Load existing releases data if it exists
-        releases = self._load_existing_releases(game_name)
+        # Load existing releases data if it exists (skip if fresh rebuild)
+        releases = [] if is_fresh_rebuild else self._load_existing_releases(game_name)
         initial_release_count = len(releases)
-        logging.info(f"Loaded {initial_release_count} existing releases from database")
+        if is_fresh_rebuild:
+            logging.info("Skipping existing releases data for fresh rebuild")
+        else:
+            logging.info(f"Loaded {initial_release_count} existing releases from database")
 
         # Get release data for each new filtered tag
         new_releases_added = 0
@@ -370,16 +385,31 @@ class ReleaseDBBuilder:
     
     def run(self) -> None:
         """Run the database builder for all configured games."""
+        # Validate fresh games list against configured games
+        if self.fresh_games:
+            configured_games = {game['game_name'] for game in self.config['games']}
+            invalid_games = self.fresh_games - configured_games
+            if invalid_games:
+                logging.warning(f"Games specified in --fresh but not found in configuration: {sorted(invalid_games)}")
+            valid_fresh_games = self.fresh_games & configured_games
+            if valid_fresh_games:
+                logging.info(f"Valid games for fresh rebuild: {sorted(valid_fresh_games)}")
+
         for game_config in self.config['games']:
             try:
                 releases, releases_changed = self.build_database(game_config)
 
                 game_name = game_config['game_name']
 
-                # Only save releases and update index if there were changes
-                if releases_changed:
+                # For fresh rebuilds, always save even if no new releases were added
+                # since we're rebuilding from scratch
+                is_fresh_rebuild = game_name in self.fresh_games
+                if releases_changed or is_fresh_rebuild:
                     self._save_releases(game_name, releases)
-                    logging.info(f"Database updated for {game_name}")
+                    if is_fresh_rebuild:
+                        logging.info(f"Fresh rebuild completed for {game_name}")
+                    else:
+                        logging.info(f"Database updated for {game_name}")
                 else:
                     logging.info(f"No changes for {game_name}, skipping save and index update")
 
@@ -393,7 +423,8 @@ def main():
     parser.add_argument("config", help="Path to configuration JSON file")
     parser.add_argument("--token", help="GitHub API token (optional)")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging")
-    
+    parser.add_argument("--fresh", help="Comma-separated list of game names to rebuild fresh (skip all cached data)")
+
     args = parser.parse_args()
     
     # Setup logging
@@ -402,9 +433,15 @@ def main():
         level=log_level,
         format='%(asctime)s - %(levelname)s - %(message)s'
     )
-    
+
+    # Parse fresh games list
+    fresh_games = []
+    if args.fresh:
+        fresh_games = [game.strip() for game in args.fresh.split(',') if game.strip()]
+        logging.info(f"Fresh rebuild requested for games: {fresh_games}")
+
     try:
-        builder = ReleaseDBBuilder(args.config, args.token)
+        builder = ReleaseDBBuilder(args.config, args.token, fresh_games)
         builder.run()
         
     except Exception as e:
