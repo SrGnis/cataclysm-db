@@ -2,6 +2,8 @@
 
 A Python application that builds a database of GitHub releases for specified repositories.
 
+Get the last of the database in the [releases section](https://github.com/SrGnis/cataclysm-db/releases/tag/latest)
+
 ## Features
 
 - **Tag Discovery**: Uses `git ls-remote --tags` to fetch all tags from target repositories without cloning
@@ -20,12 +22,14 @@ A Python application that builds a database of GitHub releases for specified rep
 ## Installation
 
 1. Clone this repository:
+
 ```bash
 git clone https://github.com/SrGnis/cataclysm-db
 cd cataclysm-db
 ```
 
 2. Install dependencies:
+
 ```bash
 pip install -r requirements.txt
 ```
@@ -61,6 +65,7 @@ python release_db_builder.py config.json --fresh game1,game2,game3
 ```
 
 This will:
+
 - Skip loading processed tags cache for the specified games
 - Skip loading failed tags cache for the specified games
 - Skip loading existing releases data for the specified games
@@ -82,10 +87,7 @@ Create a JSON configuration file with the following structure:
     {
       "game_name": "dda",
       "git_repo": "CleverRaven/Cataclysm-DDA",
-      "filters": [
-        "^[0-9]+\\.[0-9]+$",
-        "^[0-9]+\\.[0-9]+\\.[0-9]+$"
-      ]
+      "filters": ["^[0-9]+\\.[0-9]+$", "^[0-9]+\\.[0-9]+\\.[0-9]+$"]
     }
   ]
 }
@@ -112,21 +114,28 @@ The application creates an organized directory structure for each game:
 db/
 ├── index.json                           # Database version index for client synchronization
 └── {game_name}/
-    ├── {game_name}_releases.json        # Release database
-    ├── {game_name}_processed_tags.json  # Cache of successfully processed tags
-    └── {game_name}_failed_tags.json     # Cache of tags without releases
+    ├── {game_name}_releases.json          # Release database (all channels)
+    ├── {game_name}_stable_releases.json   # Stable-only release database
+    ├── {game_name}_releases.jsonl         # NDJSON release database (all channels)
+    ├── {game_name}_stable_releases.jsonl  # NDJSON stable-only release database
+    ├── {game_name}_processed_tags.json    # Cache of successfully processed tags
+    └── {game_name}_failed_tags.json       # Cache of tags without releases
 ```
 
 ### Files Generated:
 
 - **`index.json`**: Central index file tracking database versions (Unix timestamps) for efficient client synchronization
-- **`{game_name}_releases.json`**: Contains an array of simplified release objects with essential GitHub API data
+- **`{game_name}_releases.json`**: Contains an array of simplified release objects with essential GitHub API data (all channels)
+- **`{game_name}_stable_releases.json`**: Contains only releases where `channel` is `stable`
+- **`{game_name}_releases.jsonl`**: NDJSON variant of `{game_name}_releases.json` (one release JSON object per line)
+- **`{game_name}_stable_releases.jsonl`**: NDJSON variant of `{game_name}_stable_releases.json`
 - **`{game_name}_processed_tags.json`**: Cache file tracking which tags have been successfully processed to avoid duplicate work
 - **`{game_name}_failed_tags.json`**: Cache file tracking tags that don't have associated GitHub releases to avoid repeated failed API calls
 
 Each release database contains an array of simplified release objects with essential information:
 
 **Release Information:**
+
 - Release ID, name, and tag name
 - Publication and creation dates
 - Release notes/body
@@ -134,6 +143,7 @@ Each release database contains an array of simplified release objects with essen
 - Game type classification
 
 **Asset Information:**
+
 - Asset name and download URL
 - File size and creation/update timestamps
 - **Platform detection**: Windows, Linux, macOS, Android, Unknown
@@ -146,7 +156,9 @@ Each release database contains an array of simplified release objects with essen
 
 1. Fetch `index.json` to get current database versions
 2. Compare with local version cache to identify outdated databases
-3. Download only the `{game_name}_releases.json` files that have newer versions
+3. Download only the files you consume for each outdated game:
+   - `{game_name}_releases.json` or `{game_name}_releases.jsonl` for all channels
+   - `{game_name}_stable_releases.json` or `{game_name}_stable_releases.jsonl` for stable-only channels
 4. Update local version cache with new timestamps
 
 **NOTE**: To get the files easily, you can use the urls https://github.com/SrGnis/cataclysm-db/releases/download/latest/{file_name}
@@ -156,6 +168,7 @@ Each release database contains an array of simplified release objects with essen
 The `db/index.json` file enables efficient client application synchronization by tracking database versions:
 
 ### Index Structure
+
 ```json
 {
   "dda": {

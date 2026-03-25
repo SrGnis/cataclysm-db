@@ -148,6 +148,15 @@ class ReleaseDBBuilder:
     def _get_releases_file_path(self, game_name: str) -> Path:
         return self._get_game_directory(game_name) / f"{game_name}_releases.json"
 
+    def _get_stable_releases_file_path(self, game_name: str) -> Path:
+        return self._get_game_directory(game_name) / f"{game_name}_stable_releases.json"
+
+    def _get_releases_jsonl_file_path(self, game_name: str) -> Path:
+        return self._get_game_directory(game_name) / f"{game_name}_releases.jsonl"
+
+    def _get_stable_releases_jsonl_file_path(self, game_name: str) -> Path:
+        return self._get_game_directory(game_name) / f"{game_name}_stable_releases.jsonl"
+
     def _get_processed_tags_file_path(self, game_name: str) -> Path:
         return self._get_game_directory(game_name) / f"{game_name}_processed_tags.json"
 
@@ -262,6 +271,9 @@ class ReleaseDBBuilder:
         """Save releases data to file and update database index."""
         self._ensure_game_directory(game_name)
         releases_file = self._get_releases_file_path(game_name)
+        stable_releases_file = self._get_stable_releases_file_path(game_name)
+        releases_jsonl_file = self._get_releases_jsonl_file_path(game_name)
+        stable_releases_jsonl_file = self._get_stable_releases_jsonl_file_path(game_name)
 
         try:
             # Sort releases by published_at date (newest first), fallback to created_at, then to epoch for None values
@@ -273,9 +285,27 @@ class ReleaseDBBuilder:
 
             # Convert GameRelease objects to dictionaries for JSON serialization
             releases_data = [release.to_dict() for release in sorted_releases]
+            stable_releases_data = [release for release in releases_data if release.get("channel") == "stable"]
+
             with open(releases_file, 'w') as f:
                 json.dump(releases_data, f, indent=2)
-            logging.info(f"Saved {len(releases)} releases to {releases_file} (sorted by date)")
+
+            with open(stable_releases_file, 'w') as f:
+                json.dump(stable_releases_data, f, indent=2)
+
+            with open(releases_jsonl_file, 'w') as f:
+                for release in releases_data:
+                    f.write(json.dumps(release) + "\n")
+
+            with open(stable_releases_jsonl_file, 'w') as f:
+                for release in stable_releases_data:
+                    f.write(json.dumps(release) + "\n")
+
+            logging.info(
+                f"Saved {len(releases)} releases to {releases_file}, "
+                f"{len(stable_releases_data)} stable releases to {stable_releases_file}, "
+                f"and JSONL companions ({releases_jsonl_file}, {stable_releases_jsonl_file})"
+            )
 
             # Update database index with current timestamp
             self._update_database_index(game_name)
@@ -300,6 +330,16 @@ class ReleaseDBBuilder:
 
         except Exception as e:
             logging.error(f"Failed to update database index for {game_name}: {e}")
+
+    def _has_all_release_outputs(self, game_name: str) -> bool:
+        """Check if all expected release output files exist for a game."""
+        output_files = [
+            self._get_releases_file_path(game_name),
+            self._get_stable_releases_file_path(game_name),
+            self._get_releases_jsonl_file_path(game_name),
+            self._get_stable_releases_jsonl_file_path(game_name),
+        ]
+        return all(path.exists() for path in output_files)
     
     def build_database(self, game_config: Dict) -> Tuple[List[GameRelease], bool]:
         """Build release database for a single game."""
@@ -404,10 +444,14 @@ class ReleaseDBBuilder:
                 # For fresh rebuilds, always save even if no new releases were added
                 # since we're rebuilding from scratch
                 is_fresh_rebuild = game_name in self.fresh_games
-                if releases_changed or is_fresh_rebuild:
+                has_all_outputs = self._has_all_release_outputs(game_name)
+
+                if releases_changed or is_fresh_rebuild or not has_all_outputs:
                     self._save_releases(game_name, releases)
                     if is_fresh_rebuild:
                         logging.info(f"Fresh rebuild completed for {game_name}")
+                    elif not has_all_outputs:
+                        logging.info(f"Missing output files detected for {game_name}; regenerated all outputs")
                     else:
                         logging.info(f"Database updated for {game_name}")
                 else:

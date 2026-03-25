@@ -35,11 +35,39 @@ def load_release_database(file_path: Path) -> List[Dict[str, Any]]:
 
 
 def save_release_database(file_path: Path, releases_data: List[Dict[str, Any]]):
-    """Save the updated release database to JSON file."""
+    """Save the updated release database and derived outputs."""
     try:
+        filename = file_path.name
+        if filename.endswith('_releases.json'):
+            game_name = filename[:-len('_releases.json')]
+        else:
+            game_name = file_path.stem
+
+        stable_releases_file = file_path.parent / f"{game_name}_stable_releases.json"
+        releases_jsonl_file = file_path.parent / f"{game_name}_releases.jsonl"
+        stable_releases_jsonl_file = file_path.parent / f"{game_name}_stable_releases.jsonl"
+
+        stable_releases_data = [release for release in releases_data if release.get('channel') == 'stable']
+
         with open(file_path, 'w') as f:
             json.dump(releases_data, f, indent=2)
-        logging.info(f"Saved {len(releases_data)} releases to {file_path}")
+
+        with open(stable_releases_file, 'w') as f:
+            json.dump(stable_releases_data, f, indent=2)
+
+        with open(releases_jsonl_file, 'w') as f:
+            for release in releases_data:
+                f.write(json.dumps(release) + "\n")
+
+        with open(stable_releases_jsonl_file, 'w') as f:
+            for release in stable_releases_data:
+                f.write(json.dumps(release) + "\n")
+
+        logging.info(
+            f"Saved {len(releases_data)} releases to {file_path}, "
+            f"{len(stable_releases_data)} stable releases to {stable_releases_file}, "
+            f"and JSONL companions ({releases_jsonl_file}, {stable_releases_jsonl_file})"
+        )
     except IOError as e:
         logging.error(f"Failed to save release database to {file_path}: {e}")
         raise

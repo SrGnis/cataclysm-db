@@ -141,7 +141,10 @@ jobs:
 
           **Files included:**
           - \`index.json\` - Main database index
-          - \`*_releases.json\` - Individual game release databases
+          - \`*_releases.json\` - Individual game release databases (all releases)
+          - \`*_stable_releases.json\` - Stable-only release databases
+          - \`*_releases.jsonl\` - NDJSON release databases (all releases)
+          - \`*_stable_releases.jsonl\` - NDJSON stable-only release databases
 
           **Last updated:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
 
@@ -163,3 +166,6 @@ jobs:
           
           # Upload all game release files
           find db -name "*_releases.json" -exec gh release upload latest {} \;
+
+          # Upload all game release JSONL companion files
+          find db -name "*_releases.jsonl" -exec gh release upload latest {} \;
